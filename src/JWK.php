@@ -20,6 +20,17 @@ use UnexpectedValueException;
  */
 class JWK
 {
+    private static $oid = '1.2.840.10045.2.1';
+    private static $asn1ObjectIdentifier = 0x06;
+    private static $asn1Integer = 0x02;  // also defined in JWT
+    private static $asn1Sequence = 0x10; // also defined in JWT
+    private static $asn1BitString = 0x03;
+    private static $curves = [
+        'P-256' => '1.2.840.10045.3.1.7', // Len: 64
+        // 'P-384' => '1.3.132.0.34', // Len: 96 (not yet supported)
+        // 'P-521' => '1.3.132.0.35', // Len: 132 (not supported)
+    ];
+
     /**
      * Parse a set of JWK keys
      *
@@ -103,10 +114,130 @@ class JWK
                     );
                 }
                 return new Key($publicKey, $jwk['alg']);
+            case 'EC':
+                if (isset($jwk['d'])) {
+                    // The key is actually a private key
+                    throw new UnexpectedValueException('Key data must be for a public key');
+                }
+
+                if (empty($jwk['crv'])) {
+                    throw new UnexpectedValueException('crv not set');
+                }
+
+                if (!isset(self::$curves[$jwk['crv']])) {
+                    throw new DomainException('Unrecognised or unsupported EC curve');
+                }
+
+                if (empty($jwk['x']) || empty($jwk['y'])) {
+                    throw new UnexpectedValueException('x and y not set');
+                }
+
+                $oid = self::$curves[$jwk['crv']];
+                $publicKey = self::ecJwkToPem($oid, $jwk['x'], $jwk['y']);
+                return new Key($publicKey, $jwk['alg']);
             default:
                 // Currently only RSA is supported
                 break;
         }
+    }
+
+    /**
+     * Encodes a string into a DER-encoded OID.
+     *
+     * @param   string $oid the OID string
+     * @return  string the binary DER-encoded OID
+     */
+    private static function encodeOID($oid)
+    {
+        $octets = explode('.', $oid);
+
+        // Get the first octet
+        $oid = chr(array_shift($octets) * 40 + array_shift($octets));
+
+        // Iterate over subsequent octets
+        foreach ($octets as $octet) {
+            if ($octet == 0) {
+                $oid .= chr(0x00);
+                continue;
+            }
+            $bin = '';
+
+            while ($octet) {
+                $bin .= chr(0x80 | ($octet & 0x7f));
+                $octet >>= 7;
+            }
+            $bin[0] = $bin[0] & chr(0x7f);
+
+            // Convert to big endian if necessary
+            if (pack('V', 65534) == pack('L', 65534)) {
+                $oid .= strrev($bin);
+            } else {
+                $oid .= $bin;
+            }
+        }
+
+        return $oid;
+    }
+
+    /**
+     * Converts the EC JWK values to pem format.
+     *
+     * @param   string  $oid the OID string
+     * @param   string  $x
+     * @return  string  $y
+     */
+    private static function ecJwkToPem($oid, $x, $y)
+    {
+        $pem =
+            self::encodeDER(
+                self::$asn1Sequence,
+                self::encodeDER(
+                    self::$asn1Sequence,
+                    self::encodeDER(
+                        self::$asn1ObjectIdentifier,
+                        self::encodeOID(self::$oid)
+                    )
+                    . self::encodeDER(
+                        self::$asn1ObjectIdentifier,
+                        self::encodeOID($oid)
+                    )
+                ) .
+                self::encodeDER(
+                    self::$asn1BitString,
+                    chr(0x00) . chr(0x04)
+                    . JWT::urlsafeB64Decode($x)
+                    . JWT::urlsafeB64Decode($y)
+                )
+            );
+
+        return sprintf(
+            "-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----\n",
+            wordwrap(base64_encode($pem), 64, "\n", true)
+        );
+    }
+
+    /**
+     * Encodes a value into a DER object.
+     * Also defined in Firebase\JWT\JWT
+     *
+     * @param   int     $type DER tag
+     * @param   string  $value the value to encode
+     * @return  string  the encoded object
+     */
+    private static function encodeDER($type, $value)
+    {
+        $tag_header = 0;
+        if ($type === self::$asn1Sequence) {
+            $tag_header |= 0x20;
+        }
+
+        // Type
+        $der = \chr($tag_header | $type);
+
+        // Length
+        $der .= \chr(\strlen($value));
+
+        return $der . $value;
     }
 
     /**
