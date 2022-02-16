@@ -3,6 +3,8 @@
 namespace Firebase\JWT;
 
 use PHPUnit\Framework\TestCase;
+use InvalidArgumentException;
+use UnexpectedValueException;
 
 class JWKTest extends TestCase
 {
@@ -12,32 +14,26 @@ class JWKTest extends TestCase
 
     public function testMissingKty()
     {
-        $this->setExpectedException(
-            'UnexpectedValueException',
-            'JWK must contain a "kty" parameter'
-        );
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('JWK must contain a "kty" parameter');
 
-        $badJwk = array('kid' => 'foo');
-        $keys = JWK::parseKeySet(array('keys' => array($badJwk)));
+        $badJwk = ['kid' => 'foo'];
+        $keys = JWK::parseKeySet(['keys' => [$badJwk]]);
     }
 
     public function testInvalidAlgorithm()
     {
-        $this->setExpectedException(
-            'UnexpectedValueException',
-            'No supported algorithms found in JWK Set'
-        );
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('No supported algorithms found in JWK Set');
 
-        $badJwk = array('kty' => 'BADALG', 'alg' => 'RSA256');
-        $keys = JWK::parseKeySet(array('keys' => array($badJwk)));
+        $badJwk = ['kty' => 'BADTYPE', 'alg' => 'RSA256'];
+        $keys = JWK::parseKeySet(['keys' => [$badJwk]]);
     }
 
     public function testParsePrivateKey()
     {
-        $this->setExpectedException(
-            'UnexpectedValueException',
-            'RSA private keys are not supported'
-        );
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('RSA private keys are not supported');
 
         $jwkSet = json_decode(
             file_get_contents(__DIR__ . '/data/rsa-jwkset.json'),
@@ -50,10 +46,8 @@ class JWKTest extends TestCase
 
     public function testParsePrivateKeyWithoutAlg()
     {
-        $this->setExpectedException(
-            'UnexpectedValueException',
-            'JWK must contain an "alg" parameter'
-        );
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('JWK must contain an "alg" parameter');
 
         $jwkSet = json_decode(
             file_get_contents(__DIR__ . '/data/rsa-jwkset.json'),
@@ -92,16 +86,18 @@ class JWKTest extends TestCase
 
     public function testParseJwkKey_empty()
     {
-        $this->setExpectedException('InvalidArgumentException', 'JWK must not be empty');
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('JWK must not be empty');
 
-        JWK::parseKeySet(array('keys' => array(array())));
+        JWK::parseKeySet(['keys' => [[]]]);
     }
 
     public function testParseJwkKeySet_empty()
     {
-        $this->setExpectedException('InvalidArgumentException', 'JWK Set did not contain any keys');
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('JWK Set did not contain any keys');
 
-        JWK::parseKeySet(array('keys' => array()));
+        JWK::parseKeySet(['keys' => []]);
     }
 
     /**
@@ -110,12 +106,12 @@ class JWKTest extends TestCase
     public function testDecodeByJwkKeySetTokenExpired()
     {
         $privKey1 = file_get_contents(__DIR__ . '/data/rsa1-private.pem');
-        $payload = array('exp' => strtotime('-1 hour'));
+        $payload = ['exp' => strtotime('-1 hour')];
         $msg = JWT::encode($payload, $privKey1, 'RS256', 'jwk1');
 
-        $this->setExpectedException('Firebase\JWT\ExpiredException');
+        $this->expectException(ExpiredException::class);
 
-        JWT::decode($msg, self::$keys, array('RS256'));
+        JWT::decode($msg, self::$keys);
     }
 
     /**
@@ -124,8 +120,8 @@ class JWKTest extends TestCase
     public function testDecodeByJwkKeySet($pemFile, $jwkFile, $alg)
     {
         $privKey1 = file_get_contents(__DIR__ . '/data/' . $pemFile);
-        $payload = array('sub' => 'foo', 'exp' => strtotime('+10 seconds'));
-        $msg = JWT::encode($payload, $privKey1, $alg, 'jwk1');
+        $payload = ['sub' => 'foo', 'exp' => strtotime('+10 seconds')];
+        $msg = JWT::encode($payload, $privKey1, 'RS256', 'jwk1');
 
         $jwkSet = json_decode(
             file_get_contents(__DIR__ . '/data/' . $jwkFile),
@@ -133,7 +129,7 @@ class JWKTest extends TestCase
         );
 
         $keys = JWK::parseKeySet($jwkSet);
-        $result = JWT::decode($msg, $keys, array($alg));
+        $result = JWT::decode($msg, $keys, [$alg]);
 
         $this->assertEquals("foo", $result->sub);
     }
@@ -152,26 +148,11 @@ class JWKTest extends TestCase
     public function testDecodeByMultiJwkKeySet()
     {
         $privKey2 = file_get_contents(__DIR__ . '/data/rsa2-private.pem');
-        $payload = array('sub' => 'bar', 'exp' => strtotime('+10 seconds'));
+        $payload = ['sub' => 'bar', 'exp' => strtotime('+10 seconds')];
         $msg = JWT::encode($payload, $privKey2, 'RS256', 'jwk2');
 
-        $result = JWT::decode($msg, self::$keys, array('RS256'));
+        $result = JWT::decode($msg, self::$keys);
 
         $this->assertEquals("bar", $result->sub);
-    }
-
-    /*
-     * For compatibility with PHPUnit 4.8 and PHP < 5.6
-     */
-    public function setExpectedException($exceptionName, $message = '', $code = null)
-    {
-        if (method_exists($this, 'expectException')) {
-            $this->expectException($exceptionName);
-            if ($message) {
-                $this->expectExceptionMessage($message);
-            }
-        } else {
-            parent::setExpectedException($exceptionName, $message, $code);
-        }
     }
 }
