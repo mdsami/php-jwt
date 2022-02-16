@@ -121,7 +121,7 @@ class JWKTest extends TestCase
     {
         $privKey1 = file_get_contents(__DIR__ . '/data/' . $pemFile);
         $payload = ['sub' => 'foo', 'exp' => strtotime('+10 seconds')];
-        $msg = JWT::encode($payload, $privKey1, 'RS256', 'jwk1');
+        $msg = JWT::encode($payload, $privKey1, $alg, 'jwk1');
 
         $jwkSet = json_decode(
             file_get_contents(__DIR__ . '/data/' . $jwkFile),
@@ -129,7 +129,7 @@ class JWKTest extends TestCase
         );
 
         $keys = JWK::parseKeySet($jwkSet);
-        $result = JWT::decode($msg, $keys, [$alg]);
+        $result = JWT::decode($msg, $keys);
 
         $this->assertEquals("foo", $result->sub);
     }
