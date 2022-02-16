@@ -152,7 +152,7 @@ class JWK
      * @param   string $oid the OID string
      * @return  string the binary DER-encoded OID
      */
-    private static function encodeOID($oid)
+    private static function encodeOID(string $oid): string
     {
         $octets = explode('.', $oid);
 
@@ -229,7 +229,7 @@ class JWK
      * @param   string  $value the value to encode
      * @return  string  the encoded object
      */
-    private static function encodeDER($type, $value)
+    private static function encodeDER(int $type, string $value): string
     {
         $tag_header = 0;
         if ($type === self::$asn1Sequence) {
@@ -255,7 +255,7 @@ class JWK
      *
      * @uses encodeLength
      */
-    private static function createPemFromModulusAndExponent($n, $e)
+    private static function createPemFromModulusAndExponent(string $n, string $e): string
     {
         $modulus = JWT::urlsafeB64Decode($n);
         $publicExponent = JWT::urlsafeB64Decode($e);
@@ -301,7 +301,7 @@ class JWK
      * @param int $length
      * @return string
      */
-    private static function encodeLength($length)
+    private static function encodeLength(int $length): string
     {
         if ($length <= 0x7F) {
             return \chr($length);
