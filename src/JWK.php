@@ -20,12 +20,12 @@ use UnexpectedValueException;
  */
 class JWK
 {
-    private static $oid = '1.2.840.10045.2.1';
-    private static $asn1ObjectIdentifier = 0x06;
-    private static $asn1Integer = 0x02;  // also defined in JWT
-    private static $asn1Sequence = 0x10; // also defined in JWT
-    private static $asn1BitString = 0x03;
-    private static $curves = [
+    private const OID = '1.2.840.10045.2.1';
+    private const ASN1_OBJECT_IDENTIFIER = 0x06;
+    private const ASN1_INTEGER = 0x02;  // also defined in JWT
+    private const ASN1_SEQUENCE = 0x10; // also defined in JWT
+    private const ASN1_BIT_STRING = 0x03;
+    private const EC_CURVES = [
         'P-256' => '1.2.840.10045.3.1.7', // Len: 64
         // 'P-384' => '1.3.132.0.34', // Len: 96 (not yet supported)
         // 'P-521' => '1.3.132.0.35', // Len: 132 (not supported)
@@ -127,7 +127,7 @@ class JWK
                     throw new UnexpectedValueException('crv not set');
                 }
 
-                if (!isset(self::$curves[$jwk['crv']])) {
+                if (!isset(self::EC_CURVES[$jwk['crv']])) {
                     throw new DomainException('Unrecognised or unsupported EC curve');
                 }
 
@@ -135,8 +135,7 @@ class JWK
                     throw new UnexpectedValueException('x and y not set');
                 }
 
-                $oid = self::$curves[$jwk['crv']];
-                $publicKey = self::ecJwkToPem($oid, $jwk['x'], $jwk['y']);
+                $publicKey = self::createPemFromCrvAndXYCoordinates($jwk['crv'], $jwk['x'], $jwk['y']);
                 return new Key($publicKey, $jwk['alg']);
             default:
                 // Currently only RSA is supported
@@ -147,68 +146,32 @@ class JWK
     }
 
     /**
-     * Encodes a string into a DER-encoded OID.
-     *
-     * @param   string $oid the OID string
-     * @return  string the binary DER-encoded OID
-     */
-    private static function encodeOID(string $oid): string
-    {
-        $octets = explode('.', $oid);
-
-        // Get the first octet
-        $oid = chr(array_shift($octets) * 40 + array_shift($octets));
-
-        // Iterate over subsequent octets
-        foreach ($octets as $octet) {
-            if ($octet == 0) {
-                $oid .= chr(0x00);
-                continue;
-            }
-            $bin = '';
-
-            while ($octet) {
-                $bin .= chr(0x80 | ($octet & 0x7f));
-                $octet >>= 7;
-            }
-            $bin[0] = $bin[0] & chr(0x7f);
-
-            // Convert to big endian if necessary
-            if (pack('V', 65534) == pack('L', 65534)) {
-                $oid .= strrev($bin);
-            } else {
-                $oid .= $bin;
-            }
-        }
-
-        return $oid;
-    }
-
-    /**
      * Converts the EC JWK values to pem format.
      *
-     * @param   string  $oid the OID string
-     * @param   string  $x
-     * @return  string  $y
+     * @param   string  $crv The EC curve (only P-256 is supported)
+     * @param   string  $x   The EC x-coordinate
+     * @param   string  $y   The EC y-coordinate
+     *
+     * @return  string
      */
-    private static function ecJwkToPem($oid, $x, $y)
+    private static function createPemFromCrvAndXYCoordinates(string $crv, string $x, string $y): string
     {
         $pem =
             self::encodeDER(
-                self::$asn1Sequence,
+                self::ASN1_SEQUENCE,
                 self::encodeDER(
-                    self::$asn1Sequence,
+                    self::ASN1_SEQUENCE,
                     self::encodeDER(
-                        self::$asn1ObjectIdentifier,
-                        self::encodeOID(self::$oid)
+                        self::ASN1_OBJECT_IDENTIFIER,
+                        self::encodeOID(self::OID)
                     )
                     . self::encodeDER(
-                        self::$asn1ObjectIdentifier,
-                        self::encodeOID($oid)
+                        self::ASN1_OBJECT_IDENTIFIER,
+                        self::encodeOID(self::EC_CURVES[$crv])
                     )
                 ) .
                 self::encodeDER(
-                    self::$asn1BitString,
+                    self::ASN1_BIT_STRING,
                     chr(0x00) . chr(0x04)
                     . JWT::urlsafeB64Decode($x)
                     . JWT::urlsafeB64Decode($y)
@@ -219,30 +182,6 @@ class JWK
             "-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----\n",
             wordwrap(base64_encode($pem), 64, "\n", true)
         );
-    }
-
-    /**
-     * Encodes a value into a DER object.
-     * Also defined in Firebase\JWT\JWT
-     *
-     * @param   int     $type DER tag
-     * @param   string  $value the value to encode
-     * @return  string  the encoded object
-     */
-    private static function encodeDER(int $type, string $value): string
-    {
-        $tag_header = 0;
-        if ($type === self::$asn1Sequence) {
-            $tag_header |= 0x20;
-        }
-
-        // Type
-        $der = \chr($tag_header | $type);
-
-        // Length
-        $der .= \chr(\strlen($value));
-
-        return $der . $value;
     }
 
     /**
@@ -310,5 +249,67 @@ class JWK
         $temp = \ltrim(\pack('N', $length), \chr(0));
 
         return \pack('Ca*', 0x80 | \strlen($temp), $temp);
+    }
+
+    /**
+     * Encodes a value into a DER object.
+     * Also defined in Firebase\JWT\JWT
+     *
+     * @param   int     $type DER tag
+     * @param   string  $value the value to encode
+     * @return  string  the encoded object
+     */
+    private static function encodeDER(int $type, string $value): string
+    {
+        $tag_header = 0;
+        if ($type === self::ASN1_SEQUENCE) {
+            $tag_header |= 0x20;
+        }
+
+        // Type
+        $der = \chr($tag_header | $type);
+
+        // Length
+        $der .= \chr(\strlen($value));
+
+        return $der . $value;
+    }
+
+    /**
+     * Encodes a string into a DER-encoded OID.
+     *
+     * @param   string $oid the OID string
+     * @return  string the binary DER-encoded OID
+     */
+    private static function encodeOID(string $oid): string
+    {
+        $octets = explode('.', $oid);
+
+        // Get the first octet
+        $oid = chr(array_shift($octets) * 40 + array_shift($octets));
+
+        // Iterate over subsequent octets
+        foreach ($octets as $octet) {
+            if ($octet == 0) {
+                $oid .= chr(0x00);
+                continue;
+            }
+            $bin = '';
+
+            while ($octet) {
+                $bin .= chr(0x80 | ($octet & 0x7f));
+                $octet >>= 7;
+            }
+            $bin[0] = $bin[0] & chr(0x7f);
+
+            // Convert to big endian if necessary
+            if (pack('V', 65534) == pack('L', 65534)) {
+                $oid .= strrev($bin);
+            } else {
+                $oid .= $bin;
+            }
+        }
+
+        return $oid;
     }
 }
