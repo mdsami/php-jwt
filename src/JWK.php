@@ -285,7 +285,9 @@ class JWK
         $octets = explode('.', $oid);
 
         // Get the first octet
-        $oid = chr(array_shift($octets) * 40 + array_shift($octets));
+        $first = (int) array_shift($octets);
+        $second = (int) array_shift($octets);
+        $oid = chr($first * 40 + $second);
 
         // Iterate over subsequent octets
         foreach ($octets as $octet) {
