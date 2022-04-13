@@ -22,7 +22,6 @@ class JWK
 {
     private const OID = '1.2.840.10045.2.1';
     private const ASN1_OBJECT_IDENTIFIER = 0x06;
-    private const ASN1_INTEGER = 0x02;  // also defined in JWT
     private const ASN1_SEQUENCE = 0x10; // also defined in JWT
     private const ASN1_BIT_STRING = 0x03;
     private const EC_CURVES = [
